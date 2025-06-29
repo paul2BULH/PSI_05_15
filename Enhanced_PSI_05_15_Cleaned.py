@@ -354,8 +354,392 @@ if input_file and appendix_file:
                 rationale.append("Neonatal case (MDC 15)")
                 return psi_status, rationale, detailed_info
 
+            # PSI 05 - Foreign Object Retained After Surgery
+            if psi_name == "PSI_05":
+                # Population inclusion
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []) and principal_dx not in code_sets.get("MDC14PRINDX_CODES", []):
+                    rationale.append("Not surgical DRG or obstetric case")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for retained surgical items
+                target_codes = code_sets.get("FOREIID_CODES", [])
+                matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                          if pos == "SECONDARY" and dx in target_codes and poa != "Y"]
+                
+                if matches:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Foreign object retained after surgery: {matches[0][0]}")
+                    detailed_info["foreign_object_matches"] = matches
+                else:
+                    rationale.append("No qualifying foreign object codes found")
+
+            # PSI 06 - Iatrogenic Pneumothorax Rate
+            elif psi_name == "PSI_06":
+                # Population inclusion - surgical or medical
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []) and ms_drg not in code_sets.get("MEDIC2R_CODES", []):
+                    rationale.append("Not surgical or medical DRG")
+                    return psi_status, rationale, detailed_info
+                
+                # Exclusions
+                iatrogenic_codes = code_sets.get("IATROID_CODES", [])
+                traumatic_codes = code_sets.get("CTRAUMD_CODES", [])
+                pleural_codes = code_sets.get("PLEURAD_CODES", [])
+                
+                # Check exclusion conditions
+                if principal_dx in iatrogenic_codes:
+                    rationale.append("Principal diagnosis of iatrogenic pneumothorax")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in traumatic_codes:
+                    rationale.append("Principal diagnosis of chest trauma")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in pleural_codes:
+                    rationale.append("Principal diagnosis of pleural effusion/empyema")
+                    return psi_status, rationale, detailed_info
+                
+                # POA exclusions
+                poa_iatrogenic = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                                if pos == "SECONDARY" and dx in iatrogenic_codes and poa == "Y"]
+                if poa_iatrogenic:
+                    rationale.append(f"Iatrogenic pneumothorax present on admission: {poa_iatrogenic[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for iatrogenic pneumothorax procedure
+                iat_ptx_codes = code_sets.get("IATPTXD_CODES", [])
+                ptx_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                             if pos == "SECONDARY" and dx in iat_ptx_codes and poa != "Y"]
+                
+                if ptx_matches:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Iatrogenic pneumothorax found: {ptx_matches[0][0]}")
+                    detailed_info["pneumothorax_matches"] = ptx_matches
+                else:
+                    rationale.append("No qualifying iatrogenic pneumothorax codes found")
+
+            # PSI 07 - Central Venous Catheter-Related Blood Stream Infection Rate
+            elif psi_name == "PSI_07":
+                # Population inclusion - surgical or medical
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []) and ms_drg not in code_sets.get("MEDIC2R_CODES", []):
+                    rationale.append("Not surgical or medical DRG")
+                    return psi_status, rationale, detailed_info
+                
+                # Exclusions
+                infection_codes = code_sets.get("IDTMC3D_CODES", [])
+                cancer_codes = code_sets.get("CANCEID_CODES", [])
+                immune_codes = code_sets.get("IMMUNID_CODES", [])
+                
+                # Check exclusions
+                if principal_dx in infection_codes:
+                    rationale.append("Principal diagnosis of infection")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in cancer_codes:
+                    rationale.append("Principal diagnosis of cancer")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in immune_codes:
+                    rationale.append("Principal diagnosis of immunocompromised state")
+                    return psi_status, rationale, detailed_info
+                
+                # POA infection exclusion
+                poa_infection = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                               if pos == "SECONDARY" and dx in infection_codes and poa == "Y"]
+                if poa_infection:
+                    rationale.append(f"Infection present on admission: {poa_infection[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for central line infection
+                cvc_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                             if pos == "SECONDARY" and dx in infection_codes and poa != "Y"]
+                
+                if cvc_matches:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Central venous catheter infection found: {cvc_matches[0][0]}")
+                    detailed_info["cvc_infection_matches"] = cvc_matches
+                else:
+                    rationale.append("No qualifying central venous catheter infection codes found")
+
+            # PSI 08 - In-Hospital Fall with Hip Fracture Rate
+            elif psi_name == "PSI_08":
+                # Population inclusion - all discharges (no specific DRG requirements)
+                
+                # Exclusions
+                fx_codes = code_sets.get("FXID_CODES", [])
+                hip_fx_codes = code_sets.get("HIPFXID_CODES", [])
+                prosthetic_fx_codes = code_sets.get("PROSFXID_CODES", [])
+                
+                # Principal hip fracture exclusion
+                if principal_dx in hip_fx_codes:
+                    rationale.append("Principal diagnosis of hip fracture")
+                    return psi_status, rationale, detailed_info
+                
+                # Principal prosthetic fracture exclusion
+                if principal_dx in prosthetic_fx_codes:
+                    rationale.append("Principal diagnosis of prosthetic fracture")
+                    return psi_status, rationale, detailed_info
+                
+                # POA hip fracture exclusion
+                poa_fx = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                         if pos == "SECONDARY" and dx in hip_fx_codes and poa == "Y"]
+                if poa_fx:
+                    rationale.append(f"Hip fracture present on admission: {poa_fx[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for in-hospital hip fracture
+                hip_fx_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                                if pos == "SECONDARY" and dx in hip_fx_codes and poa != "Y"]
+                
+                if hip_fx_matches:
+                    psi_status = "Inclusion"
+                    rationale.append(f"In-hospital hip fracture found: {hip_fx_matches[0][0]}")
+                    detailed_info["hip_fracture_matches"] = hip_fx_matches
+                else:
+                    rationale.append("No qualifying in-hospital hip fracture codes found")
+
+            # PSI 09 - Perioperative Hemorrhage or Hematoma Rate
+            elif psi_name == "PSI_09":
+                # Population inclusion - surgical DRG
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []):
+                    rationale.append("Not surgical DRG")
+                    return psi_status, rationale, detailed_info
+                
+                # Exclusions
+                hemorrhage_codes = code_sets.get("POHMRI2D_CODES", [])
+                hematoma_codes = code_sets.get("HEMOTH2P_CODES", [])
+                coag_codes = code_sets.get("COAGDID_CODES", [])
+                bleeding_codes = code_sets.get("MEDBLEEDD_CODES", [])
+                
+                # Principal hemorrhage/hematoma exclusion
+                if principal_dx in hemorrhage_codes or principal_dx in hematoma_codes:
+                    rationale.append("Principal diagnosis of hemorrhage or hematoma")
+                    return psi_status, rationale, detailed_info
+                
+                # Coagulopathy exclusions
+                if principal_dx in coag_codes:
+                    rationale.append("Principal diagnosis of coagulopathy")
+                    return psi_status, rationale, detailed_info
+                
+                # POA coagulopathy exclusion
+                poa_coag = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                           if pos == "SECONDARY" and dx in coag_codes and poa == "Y"]
+                if poa_coag:
+                    rationale.append(f"Coagulopathy present on admission: {poa_coag[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Medical bleeding disorder exclusions
+                if principal_dx in bleeding_codes:
+                    rationale.append("Principal diagnosis of bleeding disorder")
+                    return psi_status, rationale, detailed_info
+                
+                poa_bleeding = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                              if pos == "SECONDARY" and dx in bleeding_codes and poa == "Y"]
+                if poa_bleeding:
+                    rationale.append(f"Bleeding disorder present on admission: {poa_bleeding[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # POA hemorrhage/hematoma exclusion
+                poa_hem = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                          if pos == "SECONDARY" and (dx in hemorrhage_codes or dx in hematoma_codes) and poa == "Y"]
+                if poa_hem:
+                    rationale.append(f"Hemorrhage/hematoma present on admission: {poa_hem[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for perioperative hemorrhage or hematoma
+                hem_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                             if pos == "SECONDARY" and (dx in hemorrhage_codes or dx in hematoma_codes) and poa != "Y"]
+                
+                if hem_matches:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Perioperative hemorrhage/hematoma found: {hem_matches[0][0]}")
+                    detailed_info["hemorrhage_matches"] = hem_matches
+                else:
+                    rationale.append("No qualifying perioperative hemorrhage/hematoma codes found")
+
+            # PSI 10 - Postoperative Acute Kidney Injury Requiring Dialysis Rate
+            elif psi_name == "PSI_10":
+                # Population inclusion - surgical DRG
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []):
+                    rationale.append("Not surgical DRG")
+                    return psi_status, rationale, detailed_info
+                
+                # Exclusions
+                physio_codes = code_sets.get("PHYSIDB_CODES", [])
+                dialysis_codes = code_sets.get("DIALYIP_CODES", [])
+                cardiac_codes = code_sets.get("CARDIID_CODES", [])
+                cardio_resp_codes = code_sets.get("CARDRID_CODES", [])
+                shock_codes = code_sets.get("SHOCKID_CODES", [])
+                renal_failure_codes = code_sets.get("CRENLFD_CODES", [])
+                
+                # Principal renal failure exclusion
+                if principal_dx in renal_failure_codes:
+                    rationale.append("Principal diagnosis of chronic renal failure")
+                    return psi_status, rationale, detailed_info
+                
+                # Principal cardiac exclusions
+                if principal_dx in cardiac_codes:
+                    rationale.append("Principal diagnosis of cardiac condition")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in cardio_resp_codes:
+                    rationale.append("Principal diagnosis of cardiorespiratory failure")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in shock_codes:
+                    rationale.append("Principal diagnosis of shock")
+                    return psi_status, rationale, detailed_info
+                
+                # POA exclusions
+                poa_renal = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                           if pos == "SECONDARY" and dx in renal_failure_codes and poa == "Y"]
+                if poa_renal:
+                    rationale.append(f"Chronic renal failure present on admission: {poa_renal[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                poa_physio = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                            if pos == "SECONDARY" and dx in physio_codes and poa == "Y"]
+                if poa_physio:
+                    rationale.append(f"Physiologic kidney condition present on admission: {poa_physio[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for acute kidney injury requiring dialysis
+                # Must have both acute kidney injury and dialysis procedure
+                aki_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                             if pos == "SECONDARY" and dx in physio_codes and poa != "Y"]
+                
+                dialysis_procs = [code for code, dt, seq in proc_list if code in dialysis_codes]
+                
+                if aki_matches and dialysis_procs:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Acute kidney injury with dialysis found: {aki_matches[0][0]}")
+                    detailed_info["aki_matches"] = aki_matches
+                    detailed_info["dialysis_procedures"] = dialysis_procs
+                elif aki_matches:
+                    rationale.append("Acute kidney injury found but no dialysis procedure")
+                elif dialysis_procs:
+                    rationale.append("Dialysis procedure found but no acute kidney injury")
+                else:
+                    rationale.append("No qualifying acute kidney injury or dialysis procedure found")
+
+            # PSI 11 - Postoperative Respiratory Failure Rate
+            elif psi_name == "PSI_11":
+                # Population inclusion - surgical DRG
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []):
+                    rationale.append("Not surgical DRG")
+                    return psi_status, rationale, detailed_info
+                
+                # Exclusions
+                acute_rf_codes = code_sets.get("ACURF2D_CODES", [])
+                chronic_rf_codes = code_sets.get("ACURF3D_CODES", [])
+                neuro_codes = code_sets.get("NEUROMD_CODES", [])
+                malnutrition_codes = code_sets.get("MALHYPD_CODES", [])
+                
+                # Procedure codes
+                trach_codes = code_sets.get("PR9672P_CODES", [])
+                reintub_codes = code_sets.get("PR9671P_CODES", [])
+                ventilator_codes = code_sets.get("PR9604P_CODES", [])
+                
+                # Principal respiratory failure exclusion
+                if principal_dx in acute_rf_codes or principal_dx in chronic_rf_codes:
+                    rationale.append("Principal diagnosis of respiratory failure")
+                    return psi_status, rationale, detailed_info
+                
+                # Principal neuromuscular exclusion
+                if principal_dx in neuro_codes:
+                    rationale.append("Principal diagnosis of neuromuscular disorder")
+                    return psi_status, rationale, detailed_info
+                
+                # Principal malnutrition exclusion
+                if principal_dx in malnutrition_codes:
+                    rationale.append("Principal diagnosis of malnutrition")
+                    return psi_status, rationale, detailed_info
+                
+                # POA exclusions
+                poa_rf = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                         if pos == "SECONDARY" and (dx in acute_rf_codes or dx in chronic_rf_codes) and poa == "Y"]
+                if poa_rf:
+                    rationale.append(f"Respiratory failure present on admission: {poa_rf[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                poa_neuro = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                           if pos == "SECONDARY" and dx in neuro_codes and poa == "Y"]
+                if poa_neuro:
+                    rationale.append(f"Neuromuscular disorder present on admission: {poa_neuro[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for postoperative respiratory failure
+                # Must have respiratory failure diagnosis AND qualifying procedure
+                rf_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                            if pos == "SECONDARY" and dx in acute_rf_codes and poa != "Y"]
+                
+                qualifying_procs = [code for code, dt, seq in proc_list 
+                                  if code in trach_codes or code in reintub_codes or code in ventilator_codes]
+                
+                if rf_matches and qualifying_procs:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Postoperative respiratory failure found: {rf_matches[0][0]}")
+                    detailed_info["respiratory_failure_matches"] = rf_matches
+                    detailed_info["respiratory_procedures"] = qualifying_procs
+                elif rf_matches:
+                    rationale.append("Respiratory failure found but no qualifying procedure")
+                elif qualifying_procs:
+                    rationale.append("Qualifying respiratory procedure found but no respiratory failure diagnosis")
+                else:
+                    rationale.append("No qualifying postoperative respiratory failure found")
+
+            # PSI 12 - Perioperative Pulmonary Embolism or Deep Vein Thrombosis Rate
+            elif psi_name == "PSI_12":
+                # Population inclusion - surgical or medical DRG
+                if ms_drg not in code_sets.get("SURGI2R_CODES", []) and ms_drg not in code_sets.get("MEDIC2R_CODES", []):
+                    rationale.append("Not surgical or medical DRG")
+                    return psi_status, rationale, detailed_info
+                
+                # Exclusions
+                dvt_codes = code_sets.get("DEEPVIB_CODES", [])
+                pe_codes = code_sets.get("PULMOID_CODES", [])
+                hit_codes = code_sets.get("HITD_CODES", [])
+                neutrauma_codes = code_sets.get("NEURTRAD_CODES", [])
+                
+                # Principal DVT/PE exclusion
+                if principal_dx in dvt_codes or principal_dx in pe_codes:
+                    rationale.append("Principal diagnosis of DVT or PE")
+                    return psi_status, rationale, detailed_info
+                
+                # Principal trauma exclusions
+                if principal_dx in hit_codes:
+                    rationale.append("Principal diagnosis of trauma with injury to lower extremity")
+                    return psi_status, rationale, detailed_info
+                
+                if principal_dx in neutrauma_codes:
+                    rationale.append("Principal diagnosis of neurologic trauma")
+                    return psi_status, rationale, detailed_info
+                
+                # POA exclusions
+                poa_dvt_pe = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                            if pos == "SECONDARY" and (dx in dvt_codes or dx in pe_codes) and poa == "Y"]
+                if poa_dvt_pe:
+                    rationale.append(f"DVT/PE present on admission: {poa_dvt_pe[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                poa_trauma = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                            if pos == "SECONDARY" and (dx in hit_codes or dx in neutrauma_codes) and poa == "Y"]
+                if poa_trauma:
+                    rationale.append(f"Trauma present on admission: {poa_trauma[0][0]}")
+                    return psi_status, rationale, detailed_info
+                
+                # Check for perioperative DVT or PE
+                dvt_pe_matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
+                                if pos == "SECONDARY" and (dx in dvt_codes or dx in pe_codes) and poa != "Y"]
+                
+                if dvt_pe_matches:
+                    psi_status = "Inclusion"
+                    rationale.append(f"Perioperative DVT/PE found: {dvt_pe_matches[0][0]}")
+                    detailed_info["dvt_pe_matches"] = dvt_pe_matches
+                else:
+                    rationale.append("No qualifying perioperative DVT/PE codes found")
+
             # PSI 13 - Postoperative Sepsis Rate
-            if psi_name == "PSI_13":
+            elif psi_name == "PSI_13":
                 # Must be elective surgical
                 if atype != 3:
                     rationale.append(f"Not elective admission: ATYPE = {atype} (required: 3)")
@@ -541,15 +925,358 @@ if input_file and appendix_file:
                     }
                 else:
                     rationale.append("No organ-specific injury with related procedure within time window found")
+            
+            else:
+                rationale.append(f"PSI {psi_name} logic not yet implemented")
 
-            # Original PSI logic (05-12) remains the same...
-            elif psi_name == "PSI_05":
-                # Population inclusion
-                if ms_drg not in code_sets.get("SURGI2R_CODES", []) and principal_dx not in code_sets.get("MDC14PRINDX_CODES", []):
-                    rationale.append("Not surgical DRG or obstetric case")
-                    return psi_status, rationale, detailed_info
+            return psi_status, rationale, detailed_info
+
+        # Main analysis
+        if selected_psis:
+            results = []
+            
+            for psi in selected_psis:
+                st.subheader(f"📊 {psi} Analysis Results")
                 
-                # Check for retained surgical items
-                target_codes = code_sets.get("FOREIID_CODES", [])
-                matches = [(dx, poa) for dx, poa, pos, seq in dx_list 
-                          if pos == "SECONDARY" and dx in target_codes and poa != "Y
+                # Create columns for metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                # Initialize counters
+                inclusions = 0
+                exclusions = 0
+                total_cases = len(df_input)
+                
+                # Detailed results storage
+                detailed_results = []
+                
+                # Process each row
+                progress_bar = st.progress(0)
+                for idx, row in df_input.iterrows():
+                    progress_bar.progress((idx + 1) / total_cases)
+                    
+                    status, rationale, detailed_info = evaluate_psi_comprehensive(
+                        row, psi, code_sets, debug_mode=debug_mode
+                    )
+                    
+                    if status == "Inclusion":
+                        inclusions += 1
+                    else:
+                        exclusions += 1
+                    
+                    # Store detailed results
+                    result_record = {
+                        "EncounterID": row.get("EncounterID") or row.get("Encounter_ID") or f"Row_{idx}",
+                        "Status": status,
+                        "Rationale": "; ".join(rationale),
+                        "Age": row.get("Age", ""),
+                        "MS_DRG": row.get("MS-DRG", ""),
+                        "PrincipalDX": row.get("PrincipalDX", ""),
+                        "ATYPE": row.get("ATYPE", ""),
+                        "Length_of_Stay": row.get("length_of_stay") or row.get("Length_of_stay", "")
+                    }
+                    
+                    # Add PSI-specific details
+                    if detailed_info:
+                        for key, value in detailed_info.items():
+                            result_record[f"Detail_{key}"] = str(value)
+                    
+                    detailed_results.append(result_record)
+                
+                progress_bar.empty()
+                
+                # Display metrics
+                with col1:
+                    st.metric("Total Cases", total_cases)
+                with col2:
+                    st.metric("Inclusions", inclusions, delta=f"{(inclusions/total_cases*100):.1f}%")
+                with col3:
+                    st.metric("Exclusions", exclusions, delta=f"{(exclusions/total_cases*100):.1f}%")
+                with col4:
+                    rate = (inclusions / total_cases * 1000) if total_cases > 0 else 0
+                    st.metric("Rate per 1000", f"{rate:.2f}")
+                
+                # Results DataFrame
+                results_df = pd.DataFrame(detailed_results)
+                
+                # Filter options
+                col1, col2 = st.columns(2)
+                with col1:
+                    status_filter = st.selectbox(f"Filter by Status ({psi})", 
+                                               ["All", "Inclusion", "Exclusion"], 
+                                               key=f"status_{psi}")
+                with col2:
+                    show_details = st.checkbox(f"Show Detailed Columns ({psi})", 
+                                             value=False, key=f"details_{psi}")
+                
+                # Apply filters
+                filtered_df = results_df.copy()
+                if status_filter != "All":
+                    filtered_df = filtered_df[filtered_df["Status"] == status_filter]
+                
+                # Select columns to display
+                if show_details:
+                    display_cols = list(filtered_df.columns)
+                else:
+                    display_cols = ["EncounterID", "Status", "Rationale", "Age", "MS_DRG", "PrincipalDX"]
+                    display_cols = [col for col in display_cols if col in filtered_df.columns]
+                
+                # Display results table
+                st.dataframe(
+                    filtered_df[display_cols],
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Download options
+                col1, col2 = st.columns(2)
+                with col1:
+                    csv_data = filtered_df.to_csv(index=False)
+                    st.download_button(
+                        f"📥 Download {psi} Results (CSV)",
+                        csv_data,
+                        f"{psi}_results.csv",
+                        "text/csv"
+                    )
+                
+                with col2:
+                    # Create Excel buffer
+                    excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                        filtered_df.to_excel(writer, sheet_name=f'{psi}_Results', index=False)
+                    excel_data = excel_buffer.getvalue()
+                    
+                    st.download_button(
+                        f"📥 Download {psi} Results (Excel)",
+                        excel_data,
+                        f"{psi}_results.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                
+                # Debug information
+                if debug_mode:
+                    with st.expander(f"🔍 Debug Information for {psi}"):
+                        st.write("**Code Sets Used:**")
+                        relevant_codes = {}
+                        
+                        if psi == "PSI_05":
+                            relevant_codes = {
+                                "FOREIID_CODES": len(code_sets.get("FOREIID_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", [])),
+                                "MDC14PRINDX_CODES": len(code_sets.get("MDC14PRINDX_CODES", []))
+                            }
+                        elif psi == "PSI_06":
+                            relevant_codes = {
+                                "IATROID_CODES": len(code_sets.get("IATROID_CODES", [])),
+                                "IATPTXD_CODES": len(code_sets.get("IATPTXD_CODES", [])),
+                                "CTRAUMD_CODES": len(code_sets.get("CTRAUMD_CODES", [])),
+                                "PLEURAD_CODES": len(code_sets.get("PLEURAD_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", [])),
+                                "MEDIC2R_CODES": len(code_sets.get("MEDIC2R_CODES", []))
+                            }
+                        elif psi == "PSI_07":
+                            relevant_codes = {
+                                "IDTMC3D_CODES": len(code_sets.get("IDTMC3D_CODES", [])),
+                                "CANCEID_CODES": len(code_sets.get("CANCEID_CODES", [])),
+                                "IMMUNID_CODES": len(code_sets.get("IMMUNID_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", [])),
+                                "MEDIC2R_CODES": len(code_sets.get("MEDIC2R_CODES", []))
+                            }
+                        elif psi == "PSI_08":
+                            relevant_codes = {
+                                "FXID_CODES": len(code_sets.get("FXID_CODES", [])),
+                                "HIPFXID_CODES": len(code_sets.get("HIPFXID_CODES", [])),
+                                "PROSFXID_CODES": len(code_sets.get("PROSFXID_CODES", []))
+                            }
+                        elif psi == "PSI_09":
+                            relevant_codes = {
+                                "POHMRI2D_CODES": len(code_sets.get("POHMRI2D_CODES", [])),
+                                "HEMOTH2P_CODES": len(code_sets.get("HEMOTH2P_CODES", [])),
+                                "COAGDID_CODES": len(code_sets.get("COAGDID_CODES", [])),
+                                "MEDBLEEDD_CODES": len(code_sets.get("MEDBLEEDD_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", []))
+                            }
+                        elif psi == "PSI_10":
+                            relevant_codes = {
+                                "PHYSIDB_CODES": len(code_sets.get("PHYSIDB_CODES", [])),
+                                "DIALYIP_CODES": len(code_sets.get("DIALYIP_CODES", [])),
+                                "CARDIID_CODES": len(code_sets.get("CARDIID_CODES", [])),
+                                "CARDRID_CODES": len(code_sets.get("CARDRID_CODES", [])),
+                                "SHOCKID_CODES": len(code_sets.get("SHOCKID_CODES", [])),
+                                "CRENLFD_CODES": len(code_sets.get("CRENLFD_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", []))
+                            }
+                        elif psi == "PSI_11":
+                            relevant_codes = {
+                                "ACURF2D_CODES": len(code_sets.get("ACURF2D_CODES", [])),
+                                "ACURF3D_CODES": len(code_sets.get("ACURF3D_CODES", [])),
+                                "PR9672P_CODES": len(code_sets.get("PR9672P_CODES", [])),
+                                "PR9671P_CODES": len(code_sets.get("PR9671P_CODES", [])),
+                                "PR9604P_CODES": len(code_sets.get("PR9604P_CODES", [])),
+                                "NEUROMD_CODES": len(code_sets.get("NEUROMD_CODES", [])),
+                                "MALHYPD_CODES": len(code_sets.get("MALHYPD_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", []))
+                            }
+                        elif psi == "PSI_12":
+                            relevant_codes = {
+                                "DEEPVIB_CODES": len(code_sets.get("DEEPVIB_CODES", [])),
+                                "PULMOID_CODES": len(code_sets.get("PULMOID_CODES", [])),
+                                "HITD_CODES": len(code_sets.get("HITD_CODES", [])),
+                                "NEURTRAD_CODES": len(code_sets.get("NEURTRAD_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", [])),
+                                "MEDIC2R_CODES": len(code_sets.get("MEDIC2R_CODES", []))
+                            }
+                        elif psi == "PSI_13":
+                            relevant_codes = {
+                                "SEPTI2D_CODES": len(code_sets.get("SEPTI2D_CODES", [])),
+                                "INFECID_CODES": len(code_sets.get("INFECID_CODES", [])),
+                                "ORPROC_CODES": len(code_sets.get("ORPROC_CODES", [])),
+                                "SURGI2R_CODES": len(code_sets.get("SURGI2R_CODES", []))
+                            }
+                        elif psi == "PSI_14":
+                            relevant_codes = {
+                                "ABDOMIPOPEN_CODES": len(code_sets.get("ABDOMIPOPEN_CODES", [])),
+                                "ABDOMIPOTHER_CODES": len(code_sets.get("ABDOMIPOTHER_CODES", [])),
+                                "RECLOIP_CODES": len(code_sets.get("RECLOIP_CODES", [])),
+                                "ABWALLCD_CODES": len(code_sets.get("ABWALLCD_CODES", []))
+                            }
+                        elif psi == "PSI_15":
+                            relevant_codes = {
+                                "ABDOMI15P_CODES": len(code_sets.get("ABDOMI15P_CODES", [])),
+                                "SPLEEN15D_CODES": len(code_sets.get("SPLEEN15D_CODES", [])),
+                                "VESSEL15D_CODES": len(code_sets.get("VESSEL15D_CODES", [])),
+                                "GI15D_CODES": len(code_sets.get("GI15D_CODES", [])),
+                                "GU15D_CODES": len(code_sets.get("GU15D_CODES", [])),
+                                "ADRENAL15D_CODES": len(code_sets.get("ADRENAL15D_CODES", [])),
+                                "DIAPHR15D_CODES": len(code_sets.get("DIAPHR15D_CODES", []))
+                            }
+                        
+                        for code_type, count in relevant_codes.items():
+                            st.write(f"- {code_type}: {count} codes")
+                
+                # Summary statistics
+                with st.expander(f"📈 Summary Statistics for {psi}"):
+                    st.write("**Inclusion/Exclusion Breakdown:**")
+                    status_counts = filtered_df['Status'].value_counts()
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if 'Inclusion' in status_counts:
+                            st.metric("Inclusions", status_counts['Inclusion'])
+                        else:
+                            st.metric("Inclusions", 0)
+                    with col2:
+                        if 'Exclusion' in status_counts:
+                            st.metric("Exclusions", status_counts['Exclusion'])
+                        else:
+                            st.metric("Exclusions", 0)
+                    
+                    # Top exclusion reasons
+                    if status_filter != "Inclusion":
+                        exclusion_df = filtered_df[filtered_df['Status'] == 'Exclusion']
+                        if not exclusion_df.empty:
+                            st.write("**Top Exclusion Reasons:**")
+                            rationale_counts = exclusion_df['Rationale'].value_counts().head(10)
+                            for reason, count in rationale_counts.items():
+                                st.write(f"- {reason}: {count} cases")
+                
+                st.divider()
+        
+        else:
+            st.warning("⚠️ Please select at least one PSI to analyze.")
+
+    except Exception as e:
+        st.error(f"❌ Error processing files: {str(e)}")
+        if debug_mode:
+            st.exception(e)
+
+else:
+    st.info("📤 Please upload both the PSI Input Excel file and PSI Appendix Excel file to begin analysis.")
+    
+    # Show sample data format
+    with st.expander("📋 Expected Data Format"):
+        st.markdown("""
+        **Input Excel File should contain columns like:**
+        - EncounterID or Encounter_ID
+        - Age
+        - MS-DRG
+        - PrincipalDX
+        - ATYPE (Admission Type: 1=Emergency, 2=Urgent, 3=Elective, 4=Newborn, 5=Not Available)
+        - MDC (Major Diagnostic Category)
+        - DRG (Diagnosis Related Group)
+        - DX1, DX2, ..., DX30 (Diagnosis codes)
+        - POA1, POA2, ..., POA30 (Present on Admission indicators: Y=Yes, N=No, U=Unknown, W=Clinically undetermined)
+        - Proc1, Proc2, ..., Proc20 (Procedure codes)
+        - Proc1_Date, Proc2_Date, ... (Procedure dates)
+        - admission_date, discharge_date
+        - length_of_stay
+        
+        **Appendix Excel File should contain:**
+        - Code sets for each PSI (SEPTI2D, INFECID, ORPROC, etc.)
+        - One column per code set with the corresponding ICD codes
+        - Column names should match the expected code set names
+        
+        **Key Data Quality Requirements:**
+        - All diagnosis codes should be in ICD-10-CM format
+        - All procedure codes should be in ICD-10-PCS format
+        - POA indicators are required for accurate PSI calculation
+        - Procedure dates are required for timing-sensitive PSIs (13, 14, 15)
+        - ATYPE field is required for PSI 13 (elective surgery indicator)
+        """)
+
+    # Show PSI Information
+    with st.expander("ℹ️ PSI Information & Definitions"):
+        st.markdown("""
+        **Patient Safety Indicators (PSIs) Supported:**
+        
+        **PSI 05** - Foreign Object Retained After Surgery
+        - Detects surgical items left inside patients
+        
+        **PSI 06** - Iatrogenic Pneumothorax Rate  
+        - Identifies procedure-caused collapsed lung
+        
+        **PSI 07** - Central Venous Catheter-Related Blood Stream Infection Rate
+        - Detects central line-associated bloodstream infections
+        
+        **PSI 08** - In-Hospital Fall with Hip Fracture Rate
+        - Identifies hip fractures from hospital falls
+        
+        **PSI 09** - Perioperative Hemorrhage or Hematoma Rate
+        - Detects surgical bleeding complications
+        
+        **PSI 10** - Postoperative Acute Kidney Injury Requiring Dialysis Rate
+        - Identifies severe kidney injury after surgery
+        
+        **PSI 11** - Postoperative Respiratory Failure Rate
+        - Detects respiratory failure requiring ventilation
+        
+        **PSI 12** - Perioperative Pulmonary Embolism or Deep Vein Thrombosis Rate
+        - Identifies blood clots during hospitalization
+        
+        **PSI 13** - Postoperative Sepsis Rate
+        - Detects serious infections after elective surgery
+        
+        **PSI 14** - Postoperative Wound Dehiscence Rate
+        - Identifies surgical wounds that reopen
+        
+        **PSI 15** - Abdominopelvic Accidental Puncture or Laceration Rate
+        - Detects accidental organ injuries during procedures
+        
+        **Features:**
+        - ✅ AHRQ-compliant PSI logic
+        - ✅ Comprehensive exclusion criteria
+        - ✅ POA (Present on Admission) validation
+        - ✅ Timing-based exclusions
+        - ✅ Detailed rationale tracking
+        - ✅ Multi-format export options
+        - ✅ Debug mode for troubleshooting
+        """)
+
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666;'>
+    <p><strong>Enhanced PSI 05-15 Analyzer</strong> - Advanced Patient Safety Indicator Analysis</p>
+    <p>Built with Streamlit • Supports AHRQ PSI v2023 Specifications</p>
+    <p><em>For technical support or questions, please refer to AHRQ PSI documentation</em></p>
+</div>
+""", unsafe_allow_html=True)
