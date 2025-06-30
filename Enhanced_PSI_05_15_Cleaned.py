@@ -134,11 +134,44 @@ def log_psi_results(psi_name, total_cases, inclusions, exclusions, rate):
 # Streamlit page configuration
 st.set_page_config(page_title="Enhanced PSI Web Debugger (PSI 05-15)", layout="wide")
 
-# Log page load
-log_user_activity('page_loaded', {'page': 'PSI Analyzer'})
+# Header with partnership branding
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    # Create two sub-columns for both logos
+    logo_col1, logo_col2 = st.columns(2)
+    
+    with logo_col1:
+        try:
+            st.image("logo_bulwark.png", width=200)
+        except:
+            st.markdown("""
+            <div style="text-align: center;">
+                <h3>🏥 BULWARK<br>HEALTH</h3>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with logo_col2:
+        try:
+            st.image("logo_arcplus.png", width=200)
+        except:
+            st.markdown("""
+            <div style="text-align: center;">
+                <h3>🔬 ARC+</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
-st.title("🏥 Enhanced PSI 05–15 Analyzer + Debugger")
+st.title("Enhanced PSI 05–15 Analyzer + Debugger")
 st.markdown("*Comprehensive Patient Safety Indicator Analysis with Advanced Logic*")
+
+# Partnership description
+st.markdown("""
+<div style="text-align: center; margin: 10px 0; color: #666; font-size: 14px;">
+    <em>A Streamlit-based web app by <strong>Bulwark Health</strong> in partnership with <strong>ARC+</strong><br>
+    for comprehensive Patient Safety Indicator (PSI) analysis (05 through 15)</em>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
 
 # Display session information in sidebar (for debugging)
 with st.sidebar:
