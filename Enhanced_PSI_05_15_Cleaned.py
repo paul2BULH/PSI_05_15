@@ -3,18 +3,159 @@ import streamlit as st
 from datetime import datetime, timedelta
 import json
 import io
+import logging
+import os
+import hashlib
+import traceback
 from enum import Enum
+import uuid
 
+# Configure logging
+def setup_logging():
+    """Setup comprehensive logging configuration"""
+    # Create logs directory if it doesn't exist
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    
+    # Configure main logger
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('logs/psi_analyzer.log'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # Create specific loggers
+    user_logger = logging.getLogger('user_activity')
+    error_logger = logging.getLogger('errors')
+    performance_logger = logging.getLogger('performance')
+    
+    # User activity logger
+    user_handler = logging.FileHandler('logs/user_activity.log')
+    user_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    user_logger.addHandler(user_handler)
+    user_logger.setLevel(logging.INFO)
+    
+    # Error logger
+    error_handler = logging.FileHandler('logs/errors.log')
+    error_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    error_logger.addHandler(error_handler)
+    error_logger.setLevel(logging.ERROR)
+    
+    # Performance logger
+    perf_handler = logging.FileHandler('logs/performance.log')
+    perf_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    performance_logger.addHandler(perf_handler)
+    performance_logger.setLevel(logging.INFO)
+    
+    return user_logger, error_logger, performance_logger
+
+# Initialize loggers
+user_logger, error_logger, performance_logger = setup_logging()
+
+def get_user_session_info():
+    """Generate or retrieve user session information"""
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.session_start = datetime.now()
+    
+    # Try to get some user identification (be careful with privacy)
+    user_ip = st.context.headers.get("x-forwarded-for", "unknown") if hasattr(st, 'context') else "unknown"
+    user_agent = st.context.headers.get("user-agent", "unknown") if hasattr(st, 'context') else "unknown"
+    
+    return {
+        'session_id': st.session_state.session_id,
+        'session_start': st.session_state.session_start,
+        'user_ip_hash': hashlib.md5(user_ip.encode()).hexdigest()[:8],  # Hash IP for privacy
+        'user_agent_hash': hashlib.md5(user_agent.encode()).hexdigest()[:8]  # Hash user agent
+    }
+
+def log_user_activity(action, details=None, status="success"):
+    """Log user activity with session information"""
+    session_info = get_user_session_info()
+    
+    log_entry = {
+        'session_id': session_info['session_id'],
+        'user_ip_hash': session_info['user_ip_hash'],
+        'user_agent_hash': session_info['user_agent_hash'],
+        'action': action,
+        'status': status,
+        'details': details or {},
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    user_logger.info(json.dumps(log_entry))
+
+def log_error(error, context=None):
+    """Log errors with full context"""
+    session_info = get_user_session_info()
+    
+    error_entry = {
+        'session_id': session_info['session_id'],
+        'user_ip_hash': session_info['user_ip_hash'],
+        'error_type': type(error).__name__,
+        'error_message': str(error),
+        'context': context or {},
+        'traceback': traceback.format_exc(),
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    error_logger.error(json.dumps(error_entry))
+
+def log_performance(action, duration_seconds, details=None):
+    """Log performance metrics"""
+    session_info = get_user_session_info()
+    
+    perf_entry = {
+        'session_id': session_info['session_id'],
+        'action': action,
+        'duration_seconds': duration_seconds,
+        'details': details or {},
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    performance_logger.info(json.dumps(perf_entry))
+
+def log_psi_results(psi_name, total_cases, inclusions, exclusions, rate):
+    """Log PSI analysis results"""
+    results = {
+        'psi': psi_name,
+        'total_cases': total_cases,
+        'inclusions': inclusions,
+        'exclusions': exclusions,
+        'rate_per_1000': rate,
+        'inclusion_percentage': (inclusions/total_cases*100) if total_cases > 0 else 0
+    }
+    
+    log_user_activity('psi_analysis_completed', results)
+
+# Streamlit page configuration
 st.set_page_config(page_title="Enhanced PSI Web Debugger (PSI 05-15)", layout="wide")
+
+# Log page load
+log_user_activity('page_loaded', {'page': 'PSI Analyzer'})
+
 st.title("🏥 Enhanced PSI 05–15 Analyzer + Debugger")
 st.markdown("*Comprehensive Patient Safety Indicator Analysis with Advanced Logic*")
 
-# Sidebar for configuration
+# Display session information in sidebar (for debugging)
 with st.sidebar:
     st.header("🔧 Configuration")
     debug_mode = st.checkbox("Enable Debug Mode", value=True)
     show_exclusions = st.checkbox("Show Detailed Exclusions", value=True)
     validate_timing = st.checkbox("Enable Timing Validation", value=True)
+    
+    # Log configuration changes
+    if st.button("Log Current Settings"):
+        config = {
+            'debug_mode': debug_mode,
+            'show_exclusions': show_exclusions,
+            'validate_timing': validate_timing
+        }
+        log_user_activity('configuration_updated', config)
+        st.success("Settings logged!")
     
     st.header("🎯 PSI Selection")
     selected_psis = st.multiselect(
@@ -22,22 +163,76 @@ with st.sidebar:
         ["PSI_05", "PSI_06", "PSI_07", "PSI_08", "PSI_09", "PSI_10", "PSI_11", "PSI_12", "PSI_13", "PSI_14", "PSI_15"],
         default=["PSI_13", "PSI_14", "PSI_15"]
     )
+    
+    # Log PSI selection
+    if selected_psis:
+        log_user_activity('psi_selection', {'selected_psis': selected_psis})
+    
+    # Session info (for admin/debugging)
+    if debug_mode:
+        st.header("🔍 Session Info")
+        session_info = get_user_session_info()
+        st.text(f"Session: {session_info['session_id'][:8]}...")
+        st.text(f"Started: {session_info['session_start'].strftime('%H:%M:%S')}")
+        
+        # Display recent logs button
+        if st.button("Show Recent Activity"):
+            try:
+                with open('logs/user_activity.log', 'r') as f:
+                    lines = f.readlines()
+                    recent_lines = lines[-10:]  # Last 10 entries
+                    st.text_area("Recent Activity", "\n".join(recent_lines), height=200)
+            except FileNotFoundError:
+                st.info("No activity log file found")
 
-# Upload input and appendix files
+# File upload section
 col1, col2 = st.columns(2)
 with col1:
     input_file = st.file_uploader("📁 Upload PSI Input Excel", type=[".xlsx"])
 with col2:
     appendix_file = st.file_uploader("📋 Upload PSI Appendix Excel", type=[".xlsx"])
 
+# Log file uploads
+if input_file:
+    file_info = {
+        'filename': input_file.name,
+        'size_bytes': input_file.size,
+        'type': 'input_file'
+    }
+    log_user_activity('file_uploaded', file_info)
+
+if appendix_file:
+    file_info = {
+        'filename': appendix_file.name,
+        'size_bytes': appendix_file.size,
+        'type': 'appendix_file'
+    }
+    log_user_activity('file_uploaded', file_info)
+
 if input_file and appendix_file:
+    start_time = datetime.now()
+    
     try:
         # Load data with progress bar
         with st.spinner("Loading and processing data..."):
+            load_start = datetime.now()
             df_input = pd.read_excel(input_file)
             appendix_df = pd.read_excel(appendix_file)
+            load_duration = (datetime.now() - load_start).total_seconds()
+            
+            # Log data loading performance
+            load_details = {
+                'input_rows': len(df_input),
+                'input_columns': len(df_input.columns),
+                'appendix_rows': len(appendix_df),
+                'appendix_columns': len(appendix_df.columns)
+            }
+            log_performance('data_loading', load_duration, load_details)
+            log_user_activity('data_loaded', load_details)
 
         # Extract and organize code sets (enhanced for PSI 13-15)
+        code_processing_start = datetime.now()
+        
         code_sets = {}
         code_mapping = {
             # PSI 05 codes
@@ -118,6 +313,15 @@ if input_file and appendix_file:
             else:
                 codes = appendix_df[col].dropna().astype(str).str.replace(".", "", regex=False).str.upper().tolist()
                 code_sets[col_clean] = codes
+
+        code_processing_duration = (datetime.now() - code_processing_start).total_seconds()
+        
+        # Log code set processing
+        code_set_details = {
+            'total_code_sets': len(code_sets),
+            'total_codes': sum(len(codes) for codes in code_sets.values())
+        }
+        log_performance('code_processing', code_processing_duration, code_set_details)
 
         # Organ system mapping for PSI 15
         class OrganSystem(Enum):
@@ -933,9 +1137,21 @@ if input_file and appendix_file:
 
         # Main analysis
         if selected_psis:
+            # Log analysis start
+            analysis_start_time = datetime.now()
+            analysis_details = {
+                'selected_psis': selected_psis,
+                'total_cases': len(df_input),
+                'debug_mode': debug_mode,
+                'validate_timing': validate_timing
+            }
+            log_user_activity('analysis_started', analysis_details)
+            
             results = []
             
             for psi in selected_psis:
+                psi_start_time = datetime.now()
+                
                 st.subheader(f"📊 {psi} Analysis Results")
                 
                 # Create columns for metrics
@@ -951,49 +1167,96 @@ if input_file and appendix_file:
                 
                 # Process each row
                 progress_bar = st.progress(0)
+                processing_errors = 0
+                
                 for idx, row in df_input.iterrows():
                     progress_bar.progress((idx + 1) / total_cases)
                     
-                    status, rationale, detailed_info = evaluate_psi_comprehensive(
-                        row, psi, code_sets, debug_mode=debug_mode
-                    )
-                    
-                    if status == "Inclusion":
-                        inclusions += 1
-                    else:
-                        exclusions += 1
-                    
-                    # Store detailed results
-                    result_record = {
-                        "EncounterID": row.get("EncounterID") or row.get("Encounter_ID") or f"Row_{idx}",
-                        "Status": status,
-                        "Rationale": "; ".join(rationale),
-                        "Age": row.get("Age", ""),
-                        "MS_DRG": row.get("MS-DRG", ""),
-                        "PrincipalDX": row.get("PrincipalDX", ""),
-                        "ATYPE": row.get("ATYPE", ""),
-                        "Length_of_Stay": row.get("length_of_stay") or row.get("Length_of_stay", "")
-                    }
-                    
-                    # Add PSI-specific details
-                    if detailed_info:
-                        for key, value in detailed_info.items():
-                            result_record[f"Detail_{key}"] = str(value)
-                    
-                    detailed_results.append(result_record)
+                    try:
+                        status, rationale, detailed_info = evaluate_psi_comprehensive(
+                            row, psi, code_sets, debug_mode=debug_mode
+                        )
+                        
+                        if status == "Inclusion":
+                            inclusions += 1
+                        else:
+                            exclusions += 1
+                        
+                        # Store detailed results
+                        result_record = {
+                            "EncounterID": row.get("EncounterID") or row.get("Encounter_ID") or f"Row_{idx}",
+                            "Status": status,
+                            "Rationale": "; ".join(rationale),
+                            "Age": row.get("Age", ""),
+                            "MS_DRG": row.get("MS-DRG", ""),
+                            "PrincipalDX": row.get("PrincipalDX", ""),
+                            "ATYPE": row.get("ATYPE", ""),
+                            "Length_of_Stay": row.get("length_of_stay") or row.get("Length_of_stay", "")
+                        }
+                        
+                        # Add PSI-specific details
+                        if detailed_info:
+                            for key, value in detailed_info.items():
+                                result_record[f"Detail_{key}"] = str(value)
+                        
+                        detailed_results.append(result_record)
+                        
+                    except Exception as e:
+                        processing_errors += 1
+                        error_context = {
+                            'psi': psi,
+                            'row_index': idx,
+                            'encounter_id': row.get("EncounterID") or row.get("Encounter_ID") or f"Row_{idx}"
+                        }
+                        log_error(e, error_context)
+                        
+                        # Create error result record
+                        result_record = {
+                            "EncounterID": row.get("EncounterID") or row.get("Encounter_ID") or f"Row_{idx}",
+                            "Status": "Error",
+                            "Rationale": f"Processing error: {str(e)}",
+                            "Age": row.get("Age", ""),
+                            "MS_DRG": row.get("MS-DRG", ""),
+                            "PrincipalDX": row.get("PrincipalDX", ""),
+                            "ATYPE": row.get("ATYPE", ""),
+                            "Length_of_Stay": row.get("length_of_stay") or row.get("Length_of_stay", "")
+                        }
+                        detailed_results.append(result_record)
                 
                 progress_bar.empty()
+                
+                # Calculate PSI processing time
+                psi_duration = (datetime.now() - psi_start_time).total_seconds()
                 
                 # Display metrics
                 with col1:
                     st.metric("Total Cases", total_cases)
                 with col2:
-                    st.metric("Inclusions", inclusions, delta=f"{(inclusions/total_cases*100):.1f}%")
+                    inclusion_pct = (inclusions/total_cases*100) if total_cases > 0 else 0
+                    st.metric("Inclusions", inclusions, delta=f"{inclusion_pct:.1f}%")
                 with col3:
-                    st.metric("Exclusions", exclusions, delta=f"{(exclusions/total_cases*100):.1f}%")
+                    exclusion_pct = (exclusions/total_cases*100) if total_cases > 0 else 0
+                    st.metric("Exclusions", exclusions, delta=f"{exclusion_pct:.1f}%")
                 with col4:
                     rate = (inclusions / total_cases * 1000) if total_cases > 0 else 0
                     st.metric("Rate per 1000", f"{rate:.2f}")
+                
+                # Log PSI results
+                log_psi_results(psi, total_cases, inclusions, exclusions, rate)
+                
+                # Log performance metrics
+                psi_perf_details = {
+                    'total_cases': total_cases,
+                    'inclusions': inclusions,
+                    'exclusions': exclusions,
+                    'processing_errors': processing_errors,
+                    'rate_per_1000': rate
+                }
+                log_performance(f'psi_{psi}_analysis', psi_duration, psi_perf_details)
+                
+                # Show processing errors if any
+                if processing_errors > 0:
+                    st.warning(f"⚠️ {processing_errors} processing errors occurred during {psi} analysis. Check error logs for details.")
                 
                 # Results DataFrame
                 results_df = pd.DataFrame(detailed_results)
@@ -1002,7 +1265,7 @@ if input_file and appendix_file:
                 col1, col2 = st.columns(2)
                 with col1:
                     status_filter = st.selectbox(f"Filter by Status ({psi})", 
-                                               ["All", "Inclusion", "Exclusion"], 
+                                               ["All", "Inclusion", "Exclusion", "Error"], 
                                                key=f"status_{psi}")
                 with col2:
                     show_details = st.checkbox(f"Show Detailed Columns ({psi})", 
@@ -1031,12 +1294,19 @@ if input_file and appendix_file:
                 col1, col2 = st.columns(2)
                 with col1:
                     csv_data = filtered_df.to_csv(index=False)
-                    st.download_button(
+                    download_time = datetime.now()
+                    if st.download_button(
                         f"📥 Download {psi} Results (CSV)",
                         csv_data,
                         f"{psi}_results.csv",
                         "text/csv"
-                    )
+                    ):
+                        log_user_activity('file_downloaded', {
+                            'psi': psi,
+                            'format': 'csv',
+                            'filtered_rows': len(filtered_df),
+                            'total_rows': len(results_df)
+                        })
                 
                 with col2:
                     # Create Excel buffer
@@ -1045,12 +1315,18 @@ if input_file and appendix_file:
                         filtered_df.to_excel(writer, sheet_name=f'{psi}_Results', index=False)
                     excel_data = excel_buffer.getvalue()
                     
-                    st.download_button(
+                    if st.download_button(
                         f"📥 Download {psi} Results (Excel)",
                         excel_data,
                         f"{psi}_results.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    ):
+                        log_user_activity('file_downloaded', {
+                            'psi': psi,
+                            'format': 'excel',
+                            'filtered_rows': len(filtered_df),
+                            'total_rows': len(results_df)
+                        })
                 
                 # Debug information
                 if debug_mode:
@@ -1152,13 +1428,19 @@ if input_file and appendix_file:
                         
                         for code_type, count in relevant_codes.items():
                             st.write(f"- {code_type}: {count} codes")
+                        
+                        # Processing statistics
+                        st.write("**Processing Statistics:**")
+                        st.write(f"- Processing time: {psi_duration:.2f} seconds")
+                        st.write(f"- Processing errors: {processing_errors}")
+                        st.write(f"- Cases per second: {total_cases/psi_duration:.1f}")
                 
                 # Summary statistics
                 with st.expander(f"📈 Summary Statistics for {psi}"):
                     st.write("**Inclusion/Exclusion Breakdown:**")
                     status_counts = filtered_df['Status'].value_counts()
                     
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         if 'Inclusion' in status_counts:
                             st.metric("Inclusions", status_counts['Inclusion'])
@@ -1169,6 +1451,11 @@ if input_file and appendix_file:
                             st.metric("Exclusions", status_counts['Exclusion'])
                         else:
                             st.metric("Exclusions", 0)
+                    with col3:
+                        if 'Error' in status_counts:
+                            st.metric("Errors", status_counts['Error'])
+                        else:
+                            st.metric("Errors", 0)
                     
                     # Top exclusion reasons
                     if status_filter != "Inclusion":
@@ -1180,17 +1467,50 @@ if input_file and appendix_file:
                                 st.write(f"- {reason}: {count} cases")
                 
                 st.divider()
+            
+            # Log overall analysis completion
+            total_analysis_duration = (datetime.now() - analysis_start_time).total_seconds()
+            total_analysis_details = {
+                'total_duration_seconds': total_analysis_duration,
+                'psis_analyzed': len(selected_psis),
+                'total_cases_processed': len(df_input) * len(selected_psis)
+            }
+            log_performance('full_analysis_completed', total_analysis_duration, total_analysis_details)
+            log_user_activity('analysis_completed', total_analysis_details, 'success')
         
         else:
             st.warning("⚠️ Please select at least one PSI to analyze.")
+            log_user_activity('analysis_attempted', {'error': 'no_psi_selected'}, 'warning')
 
     except Exception as e:
         st.error(f"❌ Error processing files: {str(e)}")
+        
+        # Log the error with full context
+        error_context = {
+            'input_file': input_file.name if input_file else None,
+            'appendix_file': appendix_file.name if appendix_file else None,
+            'selected_psis': selected_psis,
+            'debug_mode': debug_mode
+        }
+        log_error(e, error_context)
+        log_user_activity('analysis_failed', error_context, 'error')
+        
         if debug_mode:
             st.exception(e)
+            
+            # Show recent error logs
+            with st.expander("🔍 Recent Error Logs"):
+                try:
+                    with open('logs/errors.log', 'r') as f:
+                        lines = f.readlines()
+                        recent_errors = lines[-5:]  # Last 5 errors
+                        st.text_area("Recent Errors", "\n".join(recent_errors), height=200)
+                except FileNotFoundError:
+                    st.info("No error log file found")
 
 else:
     st.info("📤 Please upload both the PSI Input Excel file and PSI Appendix Excel file to begin analysis.")
+    log_user_activity('waiting_for_files')
     
     # Show sample data format
     with st.expander("📋 Expected Data Format"):
@@ -1269,14 +1589,88 @@ else:
         - ✅ Detailed rationale tracking
         - ✅ Multi-format export options
         - ✅ Debug mode for troubleshooting
+        - ✅ **User activity logging**
+        - ✅ **Error tracking and monitoring**
+        - ✅ **Performance metrics**
         """)
+
+# Log monitoring section for administrators
+if debug_mode:
+    with st.expander("🔧 Administrator - Log Monitoring"):
+        st.markdown("**Log File Management:**")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("View User Activity Log"):
+                try:
+                    with open('logs/user_activity.log', 'r') as f:
+                        lines = f.readlines()
+                        recent_lines = lines[-50:] if len(lines) > 50 else lines
+                        st.text_area("User Activity (Last 50 entries)", "\n".join(recent_lines), height=300)
+                except FileNotFoundError:
+                    st.info("No user activity log found")
+        
+        with col2:
+            if st.button("View Error Log"):
+                try:
+                    with open('logs/errors.log', 'r') as f:
+                        lines = f.readlines()
+                        recent_lines = lines[-20:] if len(lines) > 20 else lines
+                        st.text_area("Errors (Last 20 entries)", "\n".join(recent_lines), height=300)
+                except FileNotFoundError:
+                    st.info("No error log found")
+        
+        with col3:
+            if st.button("View Performance Log"):
+                try:
+                    with open('logs/performance.log', 'r') as f:
+                        lines = f.readlines()
+                        recent_lines = lines[-20:] if len(lines) > 20 else lines
+                        st.text_area("Performance (Last 20 entries)", "\n".join(recent_lines), height=300)
+                except FileNotFoundError:
+                    st.info("No performance log found")
+        
+        # Log file statistics
+        st.markdown("**Log Statistics:**")
+        try:
+            import os
+            log_stats = {}
+            log_files = ['logs/user_activity.log', 'logs/errors.log', 'logs/performance.log']
+            
+            for log_file in log_files:
+                if os.path.exists(log_file):
+                    size = os.path.getsize(log_file)
+                    with open(log_file, 'r') as f:
+                        lines = len(f.readlines())
+                    log_stats[log_file] = {'size_mb': size/1024/1024, 'lines': lines}
+                else:
+                    log_stats[log_file] = {'size_mb': 0, 'lines': 0}
+            
+            for log_file, stats in log_stats.items():
+                st.write(f"**{log_file}:** {stats['lines']} entries, {stats['size_mb']:.2f} MB")
+                
+        except Exception as e:
+            st.error(f"Error reading log statistics: {e}")
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666;'>
-    <p><strong>Enhanced PSI 05-15 Analyzer</strong> - Advanced Patient Safety Indicator Analysis</p>
-    <p>Built with Streamlit • Supports AHRQ PSI v2023 Specifications</p>
+    <p><strong>Enhanced PSI 05-15 Analyzer with User Logging</strong> - Advanced Patient Safety Indicator Analysis</p>
+    <p>Built with Streamlit • Supports AHRQ PSI v2023 Specifications • Now with comprehensive logging</p>
     <p><em>For technical support or questions, please refer to AHRQ PSI documentation</em></p>
 </div>
 """, unsafe_allow_html=True)
+
+# Log session end when app closes (best effort)
+import atexit
+def log_session_end():
+    try:
+        session_info = get_user_session_info()
+        session_duration = (datetime.now() - session_info['session_start']).total_seconds()
+        log_user_activity('session_ended', {'duration_seconds': session_duration})
+    except:
+        pass  # Ignore errors during cleanup
+
+atexit.register(log_session_end)
